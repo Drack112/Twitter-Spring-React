@@ -1,0 +1,157 @@
+services:
+  postgres:
+    container_name: postgres
+    image: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root
+      PGDATA: /data/postgres
+    volumes:
+      - postgres:/data/postgres
+    ports:
+      - "5432:5432"
+    networks:
+      - postgres
+    restart: unless-stopped
+
+  zipkin:
+    image: openzipkin/zipkin
+    container_name: zipkin
+    ports:
+      - "9411:9411"
+    networks:
+      - spring
+
+  rabbitmq:
+    image: rabbitmq:3.9.11-management-alpine
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - spring
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.0.1
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - spring
+
+  broker:
+    image: confluentinc/cp-kafka:7.0.1
+    container_name: broker
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://broker:29092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    networks:
+      - spring
+
+  grafana:
+    container_name: grafana
+    build: "dashboard/grafana"
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./grafana:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    networks:
+      monitoring:
+        aliases:
+          - grafana
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./dashboard/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus:/prometheus
+    networks:
+      monitoring:
+        aliases:
+          - prometheus
+
+  eureka-server:
+    build:
+      context: eureka-server
+      dockerfile: Dockerfile
+    container_name: eureka-server
+    hostname: eureka-server
+    environment:
+      EUREKA_HOST: eureka-server
+      ZIPKIN_HOST: zipkin
+    ports:
+      - "8761:8761"
+    networks:
+      - spring
+    depends_on:
+      - zipkin
+
+  config-server:
+    build:
+      context: config-server
+      dockerfile: Dockerfile
+    container_name: config-server
+    hostname: config-server
+    environment:
+      EUREKA_HOST: eureka-server
+      ZIPKIN_HOST: zipkin
+    ports:
+      - "8888:8888"
+    networks:
+      - spring
+    depends_on:
+      - zipkin
+      - eureka-server
+  user-service:
+    build:
+      context: user-service
+      dockerfile: Dockerfile
+    container_name: user-service
+    hostname: user-service
+    environment:
+      EUREKA_HOST: eureka-server
+      CONFIG_SERVER_HOST: config-server
+      DATASOURCE_HOST: postgres
+      ZIPKIN_HOST: zipkin
+      RABBITMQ_HOST: rabbitmq
+    ports:
+      - "8001:8001"
+    networks:
+      - postgres
+      - spring
+    depends_on:
+      - postgres
+      - zipkin
+      - rabbitmq
+      - broker
+      - eureka-server
+      - config-server
+
+networks:
+  postgres:
+    driver: bridge
+  spring:
+    driver: bridge
+  monitoring:
+
+volumes:
+  postgres:
+  pgadmin:
