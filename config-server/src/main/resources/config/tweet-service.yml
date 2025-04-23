@@ -1,0 +1,72 @@
+server:
+    port: 8002
+spring:
+    application:
+        name: tweet-service
+    datasource:
+        url: jdbc:postgresql://${DATASOURCE_HOST:localhost}:5432/tweet
+        username: postgres
+        password: root
+        driverClassName: org.postgresql.Driver
+    jpa:
+        hibernate:
+            ddl-auto: validate
+        properties:
+            hibernate:
+                dialect: org.hibernate.dialect.PostgreSQLDialect
+    flyway:
+        locations: classpath:db/migration
+    batch:
+        jdbc:
+            schema: classpath:db/create_spring_batch_tables.sql
+            initialize-schema: always
+        job:
+            enabled: false
+    zipkin:
+        base-url: http://${ZIPKIN_HOST:localhost}:9411
+    kafka:
+        bootstrap-servers: localhost:9092
+        consumer:
+            group-id: tweet
+batch:
+    chunkSize: 100
+    periodOfDays: 1
+resilience4j:
+    circuitbreaker:
+        instances:
+            image-service:
+                minimum-number-of-calls: 5
+            lists-service:
+                minimum-number-of-calls: 5
+            websocket-service:
+                minimum-number-of-calls: 5
+feign:
+    circuitbreaker:
+        enabled: true
+
+google:
+    api:
+        url: https://www.googleapis.com/youtube/v3/videos?id=%s&key=%s&part=snippet,contentDetails,statistics,status
+        key: AIzaSyBtQYzGSmcCzqOztibg1BgSTqv0xwg1D-M
+
+eureka:
+    client:
+        service-url:
+            defaultZone: http://${EUREKA_HOST:localhost}:8761/eureka
+        fetch-registry: true
+        register-with-eureka: true
+    instance:
+        hostname: ${EUREKA_HOST:localhost}
+
+management:
+    endpoints:
+        web:
+            exposure:
+                include: 'prometheus, health'
+    metrics:
+        export:
+            prometheus:
+                enabled: true
+        distribution:
+            percentiles-histogram:
+                "[http.server.requests]": true
